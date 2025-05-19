@@ -3,8 +3,8 @@ import subprocess
 import json
 import re
 import urllib.parse
-import glob # For finding files
-import time # For SSE keep-alive if needed, and demo
+import glob 
+import time 
 from flask import Flask, request, render_template_string, redirect, url_for, flash, session, Response, jsonify
 
 # Attempt to import the Gemini library
@@ -27,6 +27,14 @@ DEFAULT_FLASK_PORT = 5006
 FLASK_PORT_ENV_VAR = "FLASK_RUN_PORT"
 GEMINI_MODEL_NAME = "gemini-2.5-pro-preview-05-06" 
 COMMON_CODE_DIR = "common"
+
+# Session keys for UI-inputted tokens (used by Flask session)
+FIGMA_TOKEN_SESSION_KEY = 'figma_token_ui_session' 
+GEMINI_API_KEY_SESSION_KEY = 'gemini_api_key_ui_session' 
+
+# localStorage keys (used by JavaScript)
+FIGMA_TOKEN_LOCALSTORAGE_KEY = 'figma_token_local'
+GEMINI_API_KEY_LOCALSTORAGE_KEY = 'gemini_api_key_local'
 
 
 # --- HTML Template with Material Design Lite ---
@@ -80,6 +88,10 @@ HTML_TEMPLATE = """
          .mdl-button--accent { 
             background-color: #009688; 
         }
+        .mdl-button--save-tokens {
+            background-color: #FFC107; /* Amber */
+            color: black;
+        }
         .messages {
             margin-top: 20px;
             padding: 10px;
@@ -98,45 +110,81 @@ HTML_TEMPLATE = """
         .info-box p { margin: 5px 0; }
         .info-box code { background-color: #eceff1; padding: 2px 4px; border-radius: 3px; font-family: monospace; }
         .info-box ul { padding-left: 20px; }
+        .security-note { font-style: italic; color: #757575; font-size: 0.85em; margin-top: 5px;}
 
         #gemini-stream-container {
             margin-top: 15px;
             padding: 10px;
-            background-color: #212121; /* Dark background for log */
-            color: #00e676; /* Greenish text for log */
+            background-color: #212121; 
+            color: #00e676; 
             border: 1px solid #424242;
             border-radius: 4px;
             max-height: 300px;
             overflow-y: auto;
             font-family: monospace;
             font-size: 0.85em;
-            white-space: pre-wrap; /* Wrap long lines but preserve spaces */
-            word-break: break-all; /* Break long words/tokens */
+            white-space: pre-wrap; 
+            word-break: break-all; 
         }
         #gemini-stream-container h4 {
             margin-top: 0;
-            color: #90caf9; /* Light blue for heading */
+            color: #90caf9; 
         }
 
-        textarea#final-compose-code { /* Changed ID for clarity */
+        textarea#final-compose-code, textarea#additional_gemini_instructions {
             width: 100%;
-            height: 500px; 
             font-family: monospace;
             font-size: 0.85em;
             border: 1px solid #ccc;
             border-radius: 4px;
             padding: 10px;
             box-sizing: border-box;
-            white-space: pre;
+            white-space: pre-wrap; /* Allow wrapping for instructions */
             overflow: auto;
             background-color: #f9f9f9;
-            margin-top: 10px; /* Space above final code */
+            margin-top: 10px; 
         }
+        textarea#final-compose-code { height: 500px; }
+        textarea#additional_gemini_instructions { height: 100px; margin-bottom: 10px; }
+
         .compose-section { margin-top: 20px; }
         .file-info { font-size: 0.9em; color: #555; margin-bottom:10px; }
+        .token-status { font-size: 0.8em; color: #757575; margin-left: 10px; }
+        .custom-instructions-label { font-weight: bold; margin-top:15px; display:block; }
     </style>
 </head>
 <body>
+    <div class="mdl-card mdl-shadow--6dp">
+        <div class="mdl-card__title">
+            <h2 class="mdl-card__title-text">API Token Configuration</h2>
+        </div>
+        <div class="mdl-card__supporting-text">
+            <p>Enter your API tokens here. They will be cached in your browser's localStorage and also sent to the server session when you click "Save Tokens". UI input takes precedence over environment variables for server-side operations if saved to session.</p>
+            <form action="{{ url_for('configure_tokens') }}" method="post">
+                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                    <input class="mdl-textfield__input" type="password" id="figma_token_ui_input" name="figma_token_ui_input">
+                    <label class="mdl-textfield__label" for="figma_token_ui_input">Figma Access Token</label>
+                    <span class="token-status" id="figma_token_status_text">
+                        {% if session.get(figma_token_session_key) %}Session token active.{% elif figma_token_env_set %}Using ENV var.{% else %}Not set.{% endif %}
+                    </span>
+                </div>
+                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                    <input class="mdl-textfield__input" type="password" id="gemini_api_key_ui_input" name="gemini_api_key_ui_input">
+                    <label class="mdl-textfield__label" for="gemini_api_key_ui_input">Gemini API Key</label>
+                     <span class="token-status" id="gemini_token_status_text">
+                        {% if session.get(gemini_api_key_session_key) %}Session token active.{% elif gemini_api_key_env_set %}Using ENV var.{% else %}Not set.{% endif %}
+                    </span>
+                </div>
+                <div class="mdl-card__actions mdl-card--border">
+                    <button type="submit" class="mdl-button mdl-js-button mdl-button--raised mdl-button--save-tokens mdl-js-ripple-effect">
+                        Save Tokens to Server Session
+                    </button>
+                </div>
+            </form>
+            <p class="security-note">Note: Tokens entered here are also cached in your browser's localStorage for convenience. While this is a local tool, be mindful of XSS risks if this page were publicly hosted.</p>
+        </div>
+    </div>
+
     <div class="mdl-card mdl-shadow--6dp">
         <div class="mdl-card__title">
             <h2 class="mdl-card__title-text">Figma Node Data Fetcher</h2>
@@ -170,6 +218,11 @@ HTML_TEMPLATE = """
                     {% if session.get('image_file_path') %}<br>{{ output_image_format.upper() }} Image: {{ session.get('image_file_path') }}{% endif %}
                 </p>
                 
+                <div>
+                     <label class="custom-instructions-label" for="additional_gemini_instructions">Additional Instructions for Gemini (Optional):</label>
+                     <textarea id="additional_gemini_instructions" placeholder="e.g., Focus on accessibility. Use Material 3 components. Ensure all text is internationalized."></textarea>
+                </div>
+
                 <button id="generate-compose-btn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--accent mdl-js-ripple-effect" style="margin-top:10px;">
                     Generate Jetpack Compose with Gemini
                 </button>
@@ -178,7 +231,6 @@ HTML_TEMPLATE = """
                     <h4>Gemini Generation Log:</h4>
                     <pre id="gemini-stream-log"></pre>
                 </div>
-
             </div>
             {% endif %}
             
@@ -186,9 +238,8 @@ HTML_TEMPLATE = """
                 <p><strong>Important Setup:</strong></p>
                 <ul>
                     <li>Ensure <code>curl</code> is installed.</li>
-                    <li>Set <code>{{ token_env_var }}</code> environment variable for Figma.</li>
-                    <li>Install Python libraries: <code>pip install Flask google-generativeai</code> (add <code>Pillow</code> if using PNG/JPG with vision models).</li>
-                    <li>Set <code>{{ gemini_api_key_env_var }}</code> environment variable with your Gemini API Key.</li>
+                    <li>Set API tokens via UI above or as environment variables (<code>{{ token_env_var }}</code>, <code>{{ gemini_api_key_env_var }}</code>). UI input (saved to session) takes precedence for server operations.</li>
+                    <li>Install Python libraries: <code>pip install Flask google-generativeai</code>.</li>
                     <li>Optionally, set <code>{{ flask_port_env_var }}</code> to customize the run port (default: {{ default_flask_port }}).</li>
                     <li>JSON saved to <code>{{ output_json_filename }}</code>.</li>
                     <li>Image saved as <code>{{ output_image_prefix }}NODE-ID.{{ output_image_format }}</code>.</li>
@@ -198,7 +249,8 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
-    {% if session.get('json_file_path') %} <div class="mdl-card mdl-shadow--6dp">
+    {% if session.get('json_file_path') %} 
+    <div class="mdl-card mdl-shadow--6dp">
         <div class="mdl-card__title" style="background-color: #009688;"> 
             <h2 class="mdl-card__title-text">Final Generated Jetpack Compose Code</h2>
         </div>
@@ -210,15 +262,47 @@ HTML_TEMPLATE = """
     </div>
     {% endif %}
 
-
     <script>
+        const FIGMA_TOKEN_LS_KEY = '{{ figma_token_localStorage_key }}';
+        const GEMINI_API_KEY_LS_KEY = '{{ gemini_api_key_localStorage_key }}';
+
         document.addEventListener('DOMContentLoaded', function () {
+            const figmaTokenInput = document.getElementById('figma_token_ui_input');
+            const geminiKeyInput = document.getElementById('gemini_api_key_ui_input');
+            
+            if (figmaTokenInput) {
+                const storedFigmaToken = localStorage.getItem(FIGMA_TOKEN_LS_KEY);
+                if (storedFigmaToken) {
+                    figmaTokenInput.value = storedFigmaToken;
+                    if (figmaTokenInput.parentElement.MaterialTextfield) {
+                        figmaTokenInput.parentElement.MaterialTextfield.checkDirty();
+                    }
+                }
+                figmaTokenInput.addEventListener('input', function() {
+                    localStorage.setItem(FIGMA_TOKEN_LS_KEY, this.value);
+                });
+            }
+            if (geminiKeyInput) {
+                const storedGeminiKey = localStorage.getItem(GEMINI_API_KEY_LS_KEY);
+                if (storedGeminiKey) {
+                    geminiKeyInput.value = storedGeminiKey;
+                     if (geminiKeyInput.parentElement.MaterialTextfield) {
+                        geminiKeyInput.parentElement.MaterialTextfield.checkDirty();
+                    }
+                }
+                geminiKeyInput.addEventListener('input', function() {
+                    localStorage.setItem(GEMINI_API_KEY_LS_KEY, this.value);
+                });
+            }
+
             const generateBtn = document.getElementById('generate-compose-btn');
             const streamContainer = document.getElementById('gemini-stream-container');
             const streamLog = document.getElementById('gemini-stream-log');
             const finalCodeTextarea = document.getElementById('final-compose-code');
+            const additionalInstructionsTextarea = document.getElementById('additional_gemini_instructions');
 
-            if (generateBtn && finalCodeTextarea) { 
+
+            if (generateBtn && finalCodeTextarea && additionalInstructionsTextarea) { 
                 generateBtn.addEventListener('click', function () {
                     if (!streamContainer || !streamLog) {
                         console.error('Required DOM elements for streaming log are missing.');
@@ -227,14 +311,20 @@ HTML_TEMPLATE = """
                     }
 
                     streamContainer.style.display = 'block';
-                    streamLog.textContent = 'Starting generation... Please wait.\\n';
+                    streamLog.textContent = 'Starting generation with Gemini model {{ gemini_model_name }}... Please wait.\\n(Check Flask console for detailed API call progress too)\\n\\n';
                     finalCodeTextarea.value = ''; 
                     let accumulatedCode = ''; 
 
                     generateBtn.disabled = true;
                     generateBtn.textContent = 'Generating...';
 
-                    const eventSource = new EventSource("{{ url_for('stream_compose_generation') }}");
+                    const messagesDivs = document.querySelectorAll('.messages');
+                    messagesDivs.forEach(div => div.style.display = 'none');
+
+                    const additionalInstructions = encodeURIComponent(additionalInstructionsTextarea.value);
+                    const eventSourceUrl = "{{ url_for('stream_compose_generation') }}?additional_instructions=" + additionalInstructions;
+                    const eventSource = new EventSource(eventSourceUrl);
+
 
                     eventSource.onmessage = function (event) {
                         if (event.data === "[STREAM_END]") {
@@ -246,22 +336,12 @@ HTML_TEMPLATE = """
 
                             fetch("{{ url_for('save_generated_code') }}", {
                                 method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
+                                headers: { 'Content-Type': 'application/json', },
                                 body: JSON.stringify({ code: accumulatedCode })
                             })
                             .then(response => response.json())
-                            .then(data => {
-                                console.log('Save response:', data);
-                                if(data.status !== 'success') {
-                                    alert('Could not save generated code to session: ' + (data.message || 'Unknown error'));
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Error saving code to session:', error);
-                                alert('Error saving code to session. Check console.');
-                            });
+                            .then(data => console.log('Save to session response:', data))
+                            .catch(error => console.error('Error saving code to session:', error));
 
                         } else if (event.data.startsWith("[ERROR]")) {
                             let errorMessage = event.data.substring("[ERROR]".length).trim();
@@ -270,7 +350,11 @@ HTML_TEMPLATE = """
                             finalCodeTextarea.value = "Error during generation. See log above.";
                             generateBtn.disabled = false;
                             generateBtn.textContent = 'Generate Jetpack Compose with Gemini';
-                        } else {
+                        } else if (event.data.startsWith("[INFO]")) {
+                            let infoMessage = event.data.substring("[INFO]".length).trim();
+                            streamLog.textContent += '\\n[INFO] ' + infoMessage + '\\n';
+                        }
+                        else {
                             let textChunk = event.data.replace(/\\\\n/g, '\\n'); 
                             streamLog.textContent += textChunk;
                             accumulatedCode += textChunk; 
@@ -280,7 +364,7 @@ HTML_TEMPLATE = """
 
                     eventSource.onerror = function (error) {
                         console.error("EventSource failed:", error);
-                        streamLog.textContent += '\\n\\n--- Connection Error with Server ---';
+                        streamLog.textContent += '\\n\\n--- Connection Error with Server. Streaming stopped. ---';
                         eventSource.close();
                         finalCodeTextarea.value = "Error connecting to the server for streaming. Check console.";
                         generateBtn.disabled = false;
@@ -295,6 +379,26 @@ HTML_TEMPLATE = """
 </html>
 """
 
+def get_figma_token():
+    """Retrieves Figma token: session (from UI) > environment variable."""
+    token = session.get(FIGMA_TOKEN_SESSION_KEY) 
+    if token:
+        return token
+    env_token = os.environ.get(FIGMA_TOKEN_ENV_VAR)
+    return env_token
+
+
+def get_gemini_api_key_from_session_or_env(): 
+    """Retrieves Gemini API key: session (from UI) > environment variable.
+       This is for use within a request context.
+    """
+    key = session.get(GEMINI_API_KEY_SESSION_KEY) 
+    if key:
+        return key
+    env_key = os.environ.get(GEMINI_API_KEY_ENV_VAR)
+    return env_key
+
+
 def parse_figma_url(url):
     patterns = [
         r"figma\.com/(?:file|design)/([a-zA-Z0-9]+)[^?]*\?(?:.*&)?node-id=([^&]+)",
@@ -308,10 +412,11 @@ def parse_figma_url(url):
             return file_key, node_id_decoded
     return None, None
 
-def call_gemini_api_sse_generator(figma_json_str, figma_svg_str=None, custom_kotlin_files_content=None):
+# Modified to accept api_key and additional_instructions as parameters
+def call_gemini_api_sse_generator(api_key_param, figma_json_str, figma_svg_str=None, custom_kotlin_files_content=None, additional_instructions=None):
     """
     Calls the Gemini API and yields chunks for SSE.
-    Does NOT modify session.
+    Uses the provided api_key_param and incorporates additional_instructions.
     """
     print("SSE Generator: Attempting to call Gemini API...")
     if not genai:
@@ -319,21 +424,20 @@ def call_gemini_api_sse_generator(figma_json_str, figma_svg_str=None, custom_kot
         yield f"data: [STREAM_END]\n\n" 
         return
 
-    api_key = os.environ.get(GEMINI_API_KEY_ENV_VAR)
-    if not api_key:
-        yield f"data: [ERROR] The environment variable {GEMINI_API_KEY_ENV_VAR} is not set.\n\n"
+    if not api_key_param:
+        yield f"data: [ERROR] Gemini API Key was not provided to the generator.\n\n"
         yield f"data: [STREAM_END]\n\n"
         return
 
     try:
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=api_key_param) 
         print(f"SSE Generator: Configured Gemini API with key. Model: {GEMINI_MODEL_NAME}")
         
         model = genai.GenerativeModel(GEMINI_MODEL_NAME) 
 
         prompt = f"""
-        You are an expert Android Jetpack Compose developer. Your task is to generate high-quality, production-ready Jetpack Compose (Kotlin) code based on Figma design data.
-        The goal is to achieve a UI that is as close to pixel-perfect as possible with the provided Figma data, while ensuring the code is runnable and idiomatic.
+        You are an expert Android Jetpack Compose developer. Your primary task is to generate high-quality, production-ready, and syntactically correct Jetpack Compose (Kotlin) code.
+        This code must be based on the provided Figma design data (JSON and SVG if available) and MUST preferentially use any custom Kotlin definitions (colors, typography, utilities) also provided.
 
         Figma Node JSON:
         ```json
@@ -352,7 +456,7 @@ def call_gemini_api_sse_generator(figma_json_str, figma_svg_str=None, custom_kot
             prompt += "\nNo SVG content was provided for this node.\n"
 
         if custom_kotlin_files_content:
-            prompt += "\nConsider the following existing custom Kotlin code from the project. You MUST prioritize using these definitions (colors, typography, utilities, etc.) over defining new ones if they serve the purpose:\n"
+            prompt += "\nIMPORTANT CONTEXT: You MUST use the following existing custom Kotlin code from the project. Prioritize these definitions over generating new ones. If a Figma property (e.g., a color hex code, a font style) matches a definition in this custom code, YOU MUST use the custom definition (e.g., `AppColors.PrimaryBlue`, `AppTypography.h1`). Do NOT redefine these variables or styles.\n"
             for file_info in custom_kotlin_files_content:
                 prompt += f"""
                 --- Start of content from '{file_info['filename']}' ---
@@ -362,23 +466,30 @@ def call_gemini_api_sse_generator(figma_json_str, figma_svg_str=None, custom_kot
                 --- End of content from '{file_info['filename']}' ---
                 """
         else:
-            prompt += "\nNo custom Kotlin files were provided or found. Generate standard Jetpack Compose code.\n"
+            prompt += "\nNo custom Kotlin files were provided. Generate standard Jetpack Compose code using standard Color objects and TextStyle configurations as needed.\n"
         
+        if additional_instructions:
+            prompt += f"""
+        CRITICAL USER INSTRUCTIONS: Please strictly adhere to the following additional user-provided instructions for this specific component:
+        --- Start of Additional User Instructions ---
+        {additional_instructions}
+        --- End of Additional User Instructions ---
+        """
+
         prompt += """
         Key Instructions for Jetpack Compose Code Generation:
-        1.  **Accuracy and Pixel Perfection**: Strive for the closest possible visual match to the Figma design described by the JSON and SVG. Pay attention to dimensions, padding, margins, colors, fonts, corner radii, and layout.
-        2.  **Use Provided Custom Code**: If custom Kotlin files (for colors, typography, utilities) are provided above, YOU MUST USE THEM. Do not redefine colors or typography styles if suitable ones exist in the provided custom code. Refer to custom utility functions if they can simplify the generated code.
-        3.  **Standard Composables**: Use standard Jetpack Compose functions and Modifiers (`Box`, `Column`, `Row`, `Text`, `Image`, `Surface`, `Modifier.padding`, `Modifier.size`, `Modifier.background`, etc.).
-        4.  **SVG Handling**: If SVG content is provided for a VECTOR node, generate code to render it. Suggest using a library like Coil-SVG for Compose (`rememberAsyncImagePainter` with an SVG decoder) or, if the SVG is extremely simple, note that it could be converted to an Android VectorDrawable.
-        5.  **Interactivity**: If a node seems interactive (e.g., a button), include a placeholder `onClick` lambda (e.g., `onClick = {{ /* TODO: Implement action */ }}`). For input-like elements, suggest `remember {{ mutableStateOf("") }}`.
-        6.  **Previews**: ALWAYS include a `@Preview` Composable function for the generated component. Ensure the preview is self-contained or uses easily mockable data.
-        7.  **Imports**: Include ALL necessary import statements for Jetpack Compose, Kotlin standard library, and any custom code references.
-        8.  **Error-Free Code**: The generated Kotlin code MUST be syntactically correct and runnable.
-        9.  **Comments for Complex Translations**: If a direct or complex translation of a Figma property is difficult or potentially error-prone, use a simpler, standard Jetpack Compose equivalent and add a comment in the code noting the original Figma property or the intended behavior. For example: `// Figma 'drop-shadow': ...`.
-        10. **Color Mapping**: Map Figma colors (RGBA from JSON) to your provided custom color definitions first. If no suitable custom color exists, use standard Compose `Color(red, green, blue, alpha)` objects.
-        11. **Typography Mapping**: Map Figma typography (font family, weight, size, letter spacing, line height) to your provided custom typography definitions (e.g., `TextStyle` objects) first. If not applicable, create new `TextStyle` objects.
-        12. **Layout**: Carefully translate Figma's auto-layout properties (layoutMode, itemSpacing, padding, alignment) to Compose `Row`/`Column` arrangements and alignments. For absolute positioning or complex constraints, use `Box` with `Alignment` modifiers or, if necessary, suggest `ConstraintLayout` with a comment.
-        13. **Clarity and Readability**: Generate clean, well-formatted, and readable Kotlin code.
+        1.  **PRIORITIZE CUSTOM CODE**: This is the most important instruction. If custom Kotlin code (colors, typography, utilities from the files listed above) is provided, YOU ABSOLUTELY MUST use those definitions. For example, if a Figma color is `#FF0000` and the custom code has `val ErrorRed = Color(0xFFFF0000)`, you must use `ErrorRed`. Do not generate `Color(0xFFFF0000)` directly.
+        2.  **Accuracy and Pixel Perfection**: Strive for the closest possible visual match to the Figma design. Pay close attention to dimensions (width, height, `absoluteBoundingBox`), padding, margins, colors, fonts (family, weight, size, letterSpacing, lineHeight), corner radii, and layout (auto-layout properties like `layoutMode`, `itemSpacing`, `primaryAxisSizingMode`, `counterAxisSizingMode`).
+        3.  **Error-Free and Runnable Code**: The generated Kotlin code MUST be syntactically correct and immediately runnable within a standard Jetpack Compose project. Include ALL necessary import statements.
+        4.  **Standard Composables**: Use standard Jetpack Compose functions and Modifiers (`Box`, `Column`, `Row`, `Text`, `Image`, `Surface`, `Modifier.padding`, `Modifier.size`, `Modifier.background`, etc.).
+        5.  **SVG Handling**: If SVG content is provided, generate code to render it, preferably using a common library like Coil-SVG for Compose (`rememberAsyncImagePainter` with an SVG decoder). If the SVG is extremely simple, you may note that it could be converted to an Android VectorDrawable, but still provide the Coil-SVG based solution.
+        6.  **Interactivity**: For elements that appear interactive (buttons, input fields), include a placeholder `onClick` lambda (e.g., `onClick = {{ /* TODO: Implement action */ }}`). For input-like elements, suggest `remember {{ mutableStateOf("") }}`.
+        7.  **Previews**: ALWAYS include a `@Preview` Composable function. Ensure it's self-contained or uses easily mockable data.
+        8.  **Comments for Ambiguity**: If a Figma property is ambiguous or its direct translation is overly complex and might lead to errors, use a simpler, standard Jetpack Compose equivalent and add a clear comment in the code explaining the original Figma property or the intended behavior (e.g., `// Figma 'complex-gradient': Using solid color as fallback. Original: ...`).
+        9.  **Color Mapping (Fallback)**: If a Figma color does NOT have a clear match in the provided custom color definitions, then (and only then) generate a standard Compose `Color(red, green, blue, alpha)` object based on the RGBA values from Figma.
+        10. **Typography Mapping (Fallback)**: If Figma typography does NOT have a clear match in the provided custom typography definitions, then (and only then) create new `TextStyle` objects using Figma properties.
+        11. **Layout Translation**: Carefully translate Figma's auto-layout properties to Compose `Row`/`Column` arrangements, `Arrangement` parameters, and `Alignment` modifiers.
+        12. **Clarity and Readability**: Generate clean, well-formatted, and readable Kotlin code.
 
         Output ONLY the complete, runnable Kotlin code block. Do not include any explanatory text, greetings, or apologies before or after the code block. Start directly with the package statement or imports.
         """
@@ -397,6 +508,7 @@ def call_gemini_api_sse_generator(figma_json_str, figma_svg_str=None, custom_kot
                 print(chunk.text, end='', flush=True) 
             # else: 
             #     print(f"\n[Stream chunk {chunk_count} had no text content. Parts: {chunk.parts}]", end='', flush=True)
+
 
         if chunk_count == 0:
             print("SSE Generator: [No chunks received from stream.]")
@@ -423,48 +535,76 @@ def call_gemini_api_sse_generator(figma_json_str, figma_svg_str=None, custom_kot
 def index():
     """Renders the main page."""
     compose_output = session.get('compose_code_output', '')
+    figma_token_env_set = True if os.environ.get(FIGMA_TOKEN_ENV_VAR) else False
+    gemini_api_key_env_set = True if os.environ.get(GEMINI_API_KEY_ENV_VAR) else False
+
     return render_template_string(HTML_TEMPLATE,
                                   output_json_filename=OUTPUT_JSON_FILENAME,
                                   output_image_prefix=OUTPUT_IMAGE_FILE_PREFIX,
                                   output_image_format=OUTPUT_IMAGE_FORMAT, 
-                                  token_env_var=FIGMA_TOKEN_ENV_VAR,
-                                  gemini_api_key_env_var=GEMINI_API_KEY_ENV_VAR,
+                                  token_env_var=FIGMA_TOKEN_ENV_VAR, 
+                                  gemini_api_key_env_var=GEMINI_API_KEY_ENV_VAR, 
+                                  figma_token_session_key=FIGMA_TOKEN_SESSION_KEY,
+                                  gemini_api_key_session_key=GEMINI_API_KEY_SESSION_KEY,
+                                  figma_token_localStorage_key=FIGMA_TOKEN_LOCALSTORAGE_KEY, 
+                                  gemini_api_key_localStorage_key=GEMINI_API_KEY_LOCALSTORAGE_KEY, 
+                                  figma_token_env_set=figma_token_env_set,
+                                  gemini_api_key_env_set=gemini_api_key_env_set,
                                   flask_port_env_var=FLASK_PORT_ENV_VAR, 
                                   default_flask_port=DEFAULT_FLASK_PORT, 
                                   gemini_model_name=GEMINI_MODEL_NAME,
                                   common_code_dir=COMMON_CODE_DIR, 
                                   compose_code_output=compose_output)
 
+@app.route('/configure_tokens', methods=['POST'])
+def configure_tokens():
+    figma_token = request.form.get('figma_token_ui_input') 
+    gemini_key = request.form.get('gemini_api_key_ui_input')
+
+    if figma_token: 
+        session[FIGMA_TOKEN_SESSION_KEY] = figma_token
+        flash('Figma token saved to server session.', 'success')
+    else: 
+        session.pop(FIGMA_TOKEN_SESSION_KEY, None) 
+        flash('Figma token cleared from server session. Will use environment variable if set.', 'info')
+        
+    if gemini_key: 
+        session[GEMINI_API_KEY_SESSION_KEY] = gemini_key
+        flash('Gemini API key saved to server session.', 'success')
+    else: 
+        session.pop(GEMINI_API_KEY_SESSION_KEY, None) 
+        flash('Gemini API key cleared from server session. Will use environment variable if set.', 'info')
+
+    return redirect(url_for('index'))
+
 
 @app.route('/fetch', methods=['POST'])
 def fetch_figma_data():
-    figma_url = request.form.get('figma_url')
     session.pop('compose_code_output', None) 
     session.pop('json_file_path', None)
     session.pop('image_file_path', None)
     session.pop('last_node_id', None)
     
+    figma_url = request.form.get('figma_url')
     if not figma_url:
         flash("Figma URL is required.", "error")
         return redirect(url_for('index'))
 
     file_key, node_id = parse_figma_url(figma_url)
-    session['last_node_id'] = node_id 
-
-    if not file_key or not node_id:
+    if not file_key or not node_id: 
         flash(f"Could not parse File Key or Node ID from URL: {figma_url}", "error")
         return redirect(url_for('index'))
+    session['last_node_id'] = node_id 
 
-    figma_token = os.environ.get(FIGMA_TOKEN_ENV_VAR)
+    figma_token = get_figma_token() 
     if not figma_token:
-        flash(f"Error: {FIGMA_TOKEN_ENV_VAR} not set.", "error")
+        flash(f"Error: Figma Access Token is not set. Please set it via UI or the {FIGMA_TOKEN_ENV_VAR} environment variable.", "error")
         return redirect(url_for('index'))
 
     encoded_node_id_for_api = urllib.parse.quote(node_id)
     json_api_url = f"https://api.figma.com/v1/files/{file_key}/nodes?ids={encoded_node_id_for_api}"
     curl_json_command = ["curl", "-s", "-H", f"X-Figma-Token: {figma_token}", json_api_url]
 
-    json_saved = False
     output_json_path = os.path.join(os.getcwd(), OUTPUT_JSON_FILENAME)
     try:
         process_json = subprocess.run(curl_json_command, capture_output=True, text=True, check=True)
@@ -473,7 +613,6 @@ def fetch_figma_data():
             json.dump(loaded_json, f, indent=4)
         flash(f"JSON for '{node_id}' saved to '{output_json_path}'.", "success")
         session['json_file_path'] = output_json_path 
-        json_saved = True
     except subprocess.CalledProcessError as e:
         error_message = f"Error fetching node JSON for '{node_id}'. Curl Return code: {e.returncode}. "
         try:
@@ -488,9 +627,6 @@ def fetch_figma_data():
         return redirect(url_for('index'))
     except Exception as e:
         flash(f"Error fetching/saving JSON for '{node_id}': {str(e)}", "error")
-        return redirect(url_for('index'))
-
-    if not json_saved:
         return redirect(url_for('index'))
 
     safe_node_id_for_filename = node_id.replace(":", "-").replace("/", "-").replace("\\", "-")
@@ -542,6 +678,15 @@ def fetch_figma_data():
 def stream_compose_generation():
     session.pop('compose_code_output', None) 
 
+    retrieved_gemini_api_key = get_gemini_api_key_from_session_or_env() 
+    if not retrieved_gemini_api_key:
+        def error_stream():
+            yield f"data: [ERROR] Gemini API Key is not set. Please set it via UI or the {GEMINI_API_KEY_ENV_VAR} environment variable.\n\n"
+            yield f"data: [STREAM_END]\n\n"
+        return Response(error_stream(), mimetype='text/event-stream')
+
+    additional_instructions = request.args.get('additional_instructions', '') 
+
     json_path = session.get('json_file_path')
     svg_path = session.get('image_file_path') 
 
@@ -586,9 +731,11 @@ def stream_compose_generation():
                 print(f"Warning: Error reading custom Kotlin file '{kt_file_path}': {e}")
     
     return Response(call_gemini_api_sse_generator(
+        retrieved_gemini_api_key, 
         figma_json_content_str, 
         figma_svg_content_str,
-        custom_kotlin_files_content=custom_kotlin_files
+        custom_kotlin_files_content=custom_kotlin_files,
+        additional_instructions=additional_instructions 
     ), mimetype='text/event-stream')
 
 @app.route('/save_generated_code', methods=['POST'])
@@ -621,7 +768,7 @@ if __name__ == '__main__':
         print("Please run: pip install Flask google-generativeai")
     
     print(f"Starting Flask app with Gemini model '{GEMINI_MODEL_NAME}'. Open http://127.0.0.1:{port} in your browser.")
-    print(f"Ensure '{FIGMA_TOKEN_ENV_VAR}' and '{GEMINI_API_KEY_ENV_VAR}' environment variables are set.")
+    print(f"Set API tokens via UI or as environment variables: '{FIGMA_TOKEN_ENV_VAR}' and '{GEMINI_API_KEY_ENV_VAR}'.")
     print(f"Optionally, set '{FLASK_PORT_ENV_VAR}' to change the port (default: {DEFAULT_FLASK_PORT}).")
     print(f"Place your custom Kotlin files (ending with .kt) in the '{COMMON_CODE_DIR}/' directory.")
     print("Ensure 'curl' is installed and in your system PATH.")

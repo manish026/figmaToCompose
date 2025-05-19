@@ -1,2 +1,4 @@
 common/
 venv/
+figma_node_image_*.*
+figma_node_data.json
