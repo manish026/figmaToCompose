@@ -1,3 +1,2 @@
-curl
 Flask
 google-generativeai

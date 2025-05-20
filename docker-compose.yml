@@ -1,0 +1,8 @@
+services:
+  figma-to-compose:
+    image: manish026/figma-to-compose
+    container_name: figma-to-compose
+    environment:
+      FLASK_RUN_PORT: 5000
+    ports:
+      - "5000:5000"
