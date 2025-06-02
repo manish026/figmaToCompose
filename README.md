@@ -38,7 +38,7 @@ You can run `figmaToCompose` either directly using Python 3 or with Docker. In b
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/manish026/figmaToCompose.git](https://github.com/manish026/figmaToCompose.git)
+    git clone https://github.com/manish026/figmaToCompose.git
     cd figmaToCompose
     ```
 
@@ -71,7 +71,7 @@ You can run `figmaToCompose` either directly using Python 3 or with Docker. In b
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/manish026/figmaToCompose.git](https://github.com/manish026/figmaToCompose.git)
+    git clone https://github.com/manish026/figmaToCompose.git
     cd figmaToCompose
     ```
 
