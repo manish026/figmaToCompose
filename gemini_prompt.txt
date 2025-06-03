@@ -1,0 +1,41 @@
+Now, based on the Figma design data I will provide below, and critically, using the custom Kotlin code context (colors, typography, utilities) I've already given you in our conversation, please generate the high-quality, production-ready, and syntactically correct Jetpack Compose (Kotlin) code. Your role as an expert Android Jetpack Compose developer is to interpret these inputs meticulously to produce code that is not only functional but also aligns perfectly with the specified design and existing project conventions.
+
+Figma Node JSON:
+```json
+{figma_json_data}
+
+This JSON data contains the structured information about the Figma node, including its properties, hierarchy, and styling attributes. It is the primary source for understanding the node's characteristics.
+
+{figma_svg_data_section}
+If SVG data is provided, it represents the vector graphics of the node. This is crucial for accurately rendering icons, complex shapes, and graphical elements.
+
+{additional_user_instructions_section}
+Any additional instructions provided in this section are specific overrides or clarifications for the current generation task and must be followed with precision.
+
+Key Instructions for Jetpack Compose Code Generation:
+
+PRIORITIZE PREVIOUSLY PROVIDED CUSTOM CODE: You have already been given custom Kotlin files that define the project's established design system (colors, typography, custom modifiers, utility functions, etc.). It is absolutely critical that you prioritize and directly utilize these definitions. For example, if a Figma color is #FF0000 and the custom code context includes val Error = Color(0xFFFF0000), you MUST use AppColors.Error in the generated code. Do NOT redefine these existing variables or styles, such as by generating Color(0xFFFF0000) directly. This ensures consistency, maintainability, and adherence to the project's theming.
+
+Accuracy and Pixel Perfection: Strive for the closest possible visual match to the Figma design as described by the JSON data and supplemented by the SVG/image context. This means meticulously translating dimensions (width, height, absoluteBoundingBox), padding, margins, exact colors (unless overridden by custom code), font properties (family, weight, size, letterSpacing, lineHeight), corner radii, shadow effects, and overall layout. The goal is for the Compose UI to be visually indistinguishable from the Figma design when rendered.
+
+Error-Free and Runnable Code: The generated Kotlin code MUST be syntactically correct, free of compilation errors, and immediately runnable within a standard Jetpack Compose Android project. This includes ensuring all necessary import statements are present for every Composable, Modifier, Color, TextStyle, and any other class or function utilized, whether from the Jetpack Compose libraries or the provided custom Kotlin files.
+
+Standard Composables: Employ standard, idiomatic Jetpack Compose functions and Modifiers such as Box, Column, Row, Text, Image, Surface, Modifier.padding, Modifier.size, Modifier.background, Modifier.clip, Modifier.border, etc., to construct the UI. Choose the most semantically appropriate Composable for each Figma element.
+
+SVG Handling: If SVG content is provided (as text within the prompt), generate robust code to render it. The preferred method is to use a well-established library like Coil-SVG for Compose (e.g., using rememberAsyncImagePainter with an appropriate SVG decoder that can handle string data if available, or by suggesting that the SVG string be saved to a temporary file if the library strictly requires a URI). If the SVG is extremely simple (e.g., basic paths without complex features), you may note that it could be converted to an Android VectorDrawable, but still provide the more general SVG rendering solution first.
+
+Interactivity: For Figma elements that appear to be interactive components like buttons, clickable cards, or input fields, include a placeholder onClick lambda (e.g., onClick = {{ /* TODO: Implement action */ }}). For elements resembling input fields, suggest using remember {{ mutableStateOf("") }} to manage their state, clearly indicating where business logic or ViewModel interaction would typically be integrated.
+
+Previews: ALWAYS include a @Preview Composable function for the generated component. This preview should be self-contained, requiring no external dependencies or complex setup to render. Use easily mockable data or default values within the preview to ensure it works out-of-the-box and accurately reflects the component's appearance. Multiple previews for different states (e.g., light/dark mode, different content lengths) are encouraged if applicable.
+
+Comments for Ambiguity or Complex Translations: If a Figma property is ambiguous, lacks a direct Jetpack Compose equivalent, or its precise translation would be overly complex and potentially error-prone, opt for a simpler, standard Jetpack Compose implementation that captures the essence of the design. In such cases, YOU MUST add a clear comment in the code (// Figma 'property-name': ...) explaining the original Figma property, the interpretation made, or the simplification applied. For example: // Figma 'complex-gradient with 5 stops': Using a simpler linear gradient as a fallback. Original details: ....
+
+Color Mapping (Fallback Mechanism): If a color specified in the Figma JSON (e.g., an RGBA value) does NOT have an obvious or direct match within the provided custom color definitions (e.g., AppColors.Primary), then, and only then, should you generate a standard Compose Color(red, green, blue, alpha) object using the RGBA values directly from the Figma data. Clearly indicate if a fallback color is used.
+
+Typography Mapping (Fallback Mechanism): Similarly, if typography styles detailed in the Figma JSON (font family, weight, size, letter spacing, line height) do not directly correspond to any TextStyle objects or typography tokens defined in the provided custom typography code, then (and only then) create new TextStyle objects using the specific properties from Figma.
+
+Layout Translation: Carefully translate Figma's auto-layout properties (e.g., layoutMode indicating 'HORIZONTAL' or 'VERTICAL', itemSpacing, paddingLeft, paddingRight, paddingTop, paddingBottom, primaryAxisSizingMode, counterAxisSizingMode, primaryAxisAlignItems, counterAxisAlignItems) into appropriate Compose Row/Column structures with corresponding Arrangement (e.g., Arrangement.spacedBy, Arrangement.Start, Arrangement.Center, Arrangement.End, Arrangement.SpaceBetween, Arrangement.SpaceAround, Arrangement.SpaceEvenly) and Alignment (e.g., Alignment.Top, Alignment.CenterVertically, Alignment.Bottom, Alignment.Start, Alignment.CenterHorizontally, Alignment.End) modifiers. Use the visual context from the SVG data, if provided, to aid in interpreting these layout properties correctly.
+
+Clarity and Readability: Generate clean, well-formatted, and easily understandable Kotlin code. Use meaningful variable names and adhere to standard Kotlin coding conventions to ensure the generated code is maintainable.
+
+Output ONLY the complete, runnable Kotlin code block. Do not include any explanatory text, greetings, apologies, or any other content before or after the Kotlin code block itself. The output should start directly with the package statement (if applicable) or import statements.

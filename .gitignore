@@ -2,3 +2,5 @@ common/
 venv/
 figma_node_image_*.*
 figma_node_data.json
+.DS_Store
+__pycache__/

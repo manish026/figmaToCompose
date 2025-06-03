@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="Figma Node Fetcher and Compose Generator">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>Figma to Jetpack Compose via Gemini</title>
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <style>
+        body {
+            font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column; 
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .mdl-card {
+            width: 100%;
+            max-width: 700px; 
+            border-radius: 8px;
+            margin-bottom: 20px; 
+        }
+        .mdl-card__title {
+            background-color: #3f51b5; 
+            color: white;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        .mdl-card__supporting-text {
+            padding-bottom: 0;
+            width: 100%; 
+            box-sizing: border-box;
+        }
+        .mdl-textfield {
+            width: 100%;
+        }
+        .mdl-button--raised.mdl-button--colored {
+            background-color: #3f51b5; 
+        }
+         .mdl-button--accent { 
+            background-color: #009688; 
+        }
+        .mdl-button--save-tokens, .mdl-button--save-slack {
+            background-color: #FFC107; /* Amber */
+            color: black;
+            margin-top: 5px;
+        }
+        .mdl-button--resend-slack {
+            background-color: #2196F3; /* Blue */
+            color: white;
+            margin-left: 10px;
+        }
+        .mdl-button--copy-code {
+            background-color: #4CAF50; /* Green */
+            color: white;
+            /* margin-left: 10px; Removed to be first */
+        }
+        .messages {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            word-break: break-word; 
+        }
+        .messages.success { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+        .messages.error   { background-color: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+        .messages.warning { background-color: #fffde7; color: #f57f17; border: 1px solid #fff59d; }
+        .messages.info    { background-color: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; } 
+        
+        .info-box {
+            margin-top: 15px; padding: 10px; background-color: #e3f2fd;
+            color: #1565c0; border: 1px solid #90caf9; border-radius: 4px; font-size: 0.9em;
+        }
+        .info-box p { margin: 5px 0; }
+        .info-box code { background-color: #eceff1; padding: 2px 4px; border-radius: 3px; font-family: monospace; }
+        .info-box ul { padding-left: 20px; }
+        .security-note { font-style: italic; color: #757575; font-size: 0.85em; margin-top: 5px;}
+
+        #gemini-stream-container {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #212121; 
+            color: #00e676; 
+            border: 1px solid #424242;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.85em;
+            white-space: pre-wrap; 
+            word-break: break-all; 
+        }
+        #gemini-stream-container h4 {
+            margin-top: 0;
+            color: #90caf9; 
+        }
+
+        textarea#final-compose-code, textarea#additional_gemini_instructions {
+            width: 100%;
+            font-family: monospace;
+            font-size: 0.85em;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            box-sizing: border-box;
+            white-space: pre-wrap; 
+            overflow: auto;
+            background-color: #f9f9f9;
+            margin-top: 10px; 
+        }
+        textarea#final-compose-code { height: 500px; }
+        textarea#additional_gemini_instructions { height: 100px; margin-bottom: 10px; }
+
+        .compose-section { margin-top: 20px; }
+        .file-info { font-size: 0.9em; color: #555; margin-bottom:10px; }
+        .token-status { font-size: 0.8em; color: #757575; margin-left: 10px; }
+        .custom-instructions-label { font-weight: bold; margin-top:15px; display:block; }
+        .final-code-actions { margin-top: 10px; display: flex; align-items: center;}
+    </style>
+</head>
+<body>
+    <div class="mdl-card mdl-shadow--6dp">
+        <div class="mdl-card__title">
+            <h2 class="mdl-card__title-text">API & Slack Configuration</h2>
+        </div>
+        <div class="mdl-card__supporting-text">
+            <p>Enter your API tokens and Slack Webhook URL. They will be cached in your browser's localStorage and also sent to the server session when you click "Save". UI input takes precedence.</p>
+            <form action="{{ url_for('configure_settings') }}" method="post">
+                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                    <input class="mdl-textfield__input" type="password" id="figma_token_ui_input" name="figma_token_ui_input">
+                    <label class="mdl-textfield__label" for="figma_token_ui_input">Figma Access Token</label>
+                    <span class="token-status" id="figma_token_status_text">
+                        {% if session.get(figma_token_session_key) %}Session token active.{% elif figma_token_env_set %}Using ENV var.{% else %}Not set.{% endif %}
+                    </span>
+                </div>
+                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                    <input class="mdl-textfield__input" type="password" id="gemini_api_key_ui_input" name="gemini_api_key_ui_input">
+                    <label class="mdl-textfield__label" for="gemini_api_key_ui_input">Gemini API Key</label>
+                     <span class="token-status" id="gemini_token_status_text">
+                        {% if session.get(gemini_api_key_session_key) %}Session token active.{% elif gemini_api_key_env_set %}Using ENV var.{% else %}Not set.{% endif %}
+                    </span>
+                </div>
+                 <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                    <input class="mdl-textfield__input" type="url" id="slack_webhook_url_ui_input" name="slack_webhook_url_ui_input">
+                    <label class="mdl-textfield__label" for="slack_webhook_url_ui_input">Slack Webhook URL</label>
+                     <span class="token-status" id="slack_webhook_status_text">
+                        {% if session.get(slack_webhook_url_session_key) %}Session URL set.{% elif slack_webhook_url_env_set %}Using ENV var.{% else %}Not set.{% endif %}
+                    </span>
+                </div>
+                <div class="mdl-card__actions mdl-card--border">
+                    <button type="submit" class="mdl-button mdl-js-button mdl-button--raised mdl-button--save-tokens mdl-js-ripple-effect">
+                        Save All Settings to Session
+                    </button>
+                </div>
+            </form>
+            <p class="security-note">Note: Tokens/URLs entered here are also cached in your browser's localStorage for convenience. Webhook URLs are sensitive.</p>
+        </div>
+    </div>
+
+    <div class="mdl-card mdl-shadow--6dp">
+        <div class="mdl-card__title">
+            <h2 class="mdl-card__title-text">Figma Node Data Fetcher</h2>
+        </div>
+        <div class="mdl-card__supporting-text">
+            <p>Enter your Figma file URL to fetch node data and its {{ output_image_format.upper() }} image.</p>
+            <form action="{{ url_for('fetch_figma_data') }}" method="post">
+                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                    <input class="mdl-textfield__input" type="url" id="figma_url" name="figma_url" required>
+                    <label class="mdl-textfield__label" for="figma_url">Figma File URL (with node-id)</label>
+                </div>
+                <div class="mdl-card__actions mdl-card--border">
+                    <button type="submit" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored mdl-js-ripple-effect">
+                        Fetch Data & Image
+                    </button>
+                </div>
+            </form>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="messages {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if session.get('json_file_path') %}
+            <div class="compose-section">
+                <p class="file-info">
+                    JSON: {{ session.get('json_file_path') }}
+                    {% if session.get('image_file_path') %}<br>{{ output_image_format.upper() }} Image: {{ session.get('image_file_path') }}{% endif %}
+                </p>
+                
+                <div>
+                     <label class="custom-instructions-label" for="additional_gemini_instructions">Additional Instructions for Gemini (Optional):</label>
+                     <textarea id="additional_gemini_instructions" placeholder="e.g., Focus on accessibility. Use Material 3 components. Ensure all text is internationalized."></textarea>
+                </div>
+
+                <button id="generate-compose-btn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--accent mdl-js-ripple-effect" style="margin-top:10px;">
+                    Generate Jetpack Compose with Gemini
+                </button>
+                
+                <div id="gemini-stream-container" style="display:none;">
+                    <h4>Gemini Generation Log:</h4>
+                    <pre id="gemini-stream-log"></pre>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="info-box">
+                <p><strong>Important Setup:</strong></p>
+                <ul>
+                    <li>Ensure <code>curl</code> is installed.</li>
+                    <li>Set API tokens & Slack Webhook URL via UI above or as environment variables (<code>{{ token_env_var }}</code>, <code>{{ gemini_api_key_env_var }}</code>, <code>{{ slack_webhook_url_env_var }}</code>). UI input (saved to session) takes precedence.</li>
+                    <li>Install Python libraries: <code>pip install Flask google-generativeai requests</code>.</li>
+                    <li>Optionally, set <code>{{ flask_port_env_var }}</code> to customize the run port (default: {{ default_flask_port }}).</li>
+                    <li>JSON saved to <code>{{ output_json_filename }}</code>.</li>
+                    <li>Image saved as <code>{{ output_image_prefix }}NODE-ID.{{ output_image_format }}</code>.</li>
+                    <li><strong>For Custom Code:</strong> Create a directory named <code>{{ common_code_dir }}</code> in the same location as this script. Place any relevant Kotlin files (<code>*.kt</code>) inside it.</li>
+                    <li><strong>Token Limit Note:</strong> If you get a "token limit exceeded" error, reduce the amount of data sent to Gemini (e.g., fewer custom Kotlin files in <code>{{ common_code_dir }}/</code>, or simpler Figma nodes).</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    {% if session.get('json_file_path') %} 
+    <div class="mdl-card mdl-shadow--6dp">
+        <div class="mdl-card__title" style="background-color: #009688;"> 
+            <h2 class="mdl-card__title-text">Final Generated Jetpack Compose Code</h2>
+        </div>
+        <div class="mdl-card__supporting-text">
+            <p>The complete code generated by Gemini API (<code>{{ gemini_model_name }}</code>) will appear here after streaming finishes. <strong>Always review and test thoroughly.</strong></p>
+            <p class="file-info">Based on Figma data for Node ID: {{ session.get('last_node_id', 'N/A') }}</p>
+            <textarea id="final-compose-code" readonly class="compose-code" placeholder="Generated code will appear here...">{{ session.get('compose_code_output', '') }}</textarea>
+            <div class="final-code-actions">
+                 <button id="copy-code-btn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--copy-code mdl-js-ripple-effect" style="display: none;">
+                    Copy Code
+                </button>
+                 <button id="resend-to-slack-btn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--resend-slack mdl-js-ripple-effect" style="display: none;">
+                    Resend to Slack
+                </button>
+            </div>
+             <div id="resend-slack-status" style="margin-top:10px; font-size:0.9em;"></div>
+             <div id="copy-status" style="margin-top:10px; font-size:0.9em; color: #4CAF50;"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+        const FIGMA_TOKEN_LS_KEY = '{{ figma_token_localStorage_key }}';
+        const GEMINI_API_KEY_LS_KEY = '{{ gemini_api_key_localStorage_key }}';
+        const SLACK_WEBHOOK_URL_LS_KEY = '{{ slack_webhook_url_localStorage_key }}'; 
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const figmaTokenInput = document.getElementById('figma_token_ui_input');
+            const geminiKeyInput = document.getElementById('gemini_api_key_ui_input');
+            const slackWebhookInput = document.getElementById('slack_webhook_url_ui_input'); 
+            
+            if (figmaTokenInput) {
+                const storedFigmaToken = localStorage.getItem(FIGMA_TOKEN_LS_KEY);
+                if (storedFigmaToken) {
+                    figmaTokenInput.value = storedFigmaToken;
+                    if (figmaTokenInput.parentElement.MaterialTextfield) {
+                        figmaTokenInput.parentElement.MaterialTextfield.checkDirty();
+                    }
+                }
+                figmaTokenInput.addEventListener('input', function() {
+                    localStorage.setItem(FIGMA_TOKEN_LS_KEY, this.value);
+                });
+            }
+            if (geminiKeyInput) {
+                const storedGeminiKey = localStorage.getItem(GEMINI_API_KEY_LS_KEY);
+                if (storedGeminiKey) {
+                    geminiKeyInput.value = storedGeminiKey;
+                     if (geminiKeyInput.parentElement.MaterialTextfield) {
+                        geminiKeyInput.parentElement.MaterialTextfield.checkDirty();
+                    }
+                }
+                geminiKeyInput.addEventListener('input', function() {
+                    localStorage.setItem(GEMINI_API_KEY_LS_KEY, this.value);
+                });
+            }
+            if (slackWebhookInput) {
+                const storedSlackUrl = localStorage.getItem(SLACK_WEBHOOK_URL_LS_KEY);
+                if (storedSlackUrl) {
+                    slackWebhookInput.value = storedSlackUrl;
+                     if (slackWebhookInput.parentElement.MaterialTextfield) {
+                        slackWebhookInput.parentElement.MaterialTextfield.checkDirty();
+                    }
+                }
+                slackWebhookInput.addEventListener('input', function() {
+                    localStorage.setItem(SLACK_WEBHOOK_URL_LS_KEY, this.value);
+                });
+            }
+
+
+            const generateBtn = document.getElementById('generate-compose-btn');
+            const streamContainer = document.getElementById('gemini-stream-container');
+            const streamLog = document.getElementById('gemini-stream-log');
+            const finalCodeTextarea = document.getElementById('final-compose-code');
+            const additionalInstructionsTextarea = document.getElementById('additional_gemini_instructions');
+            const resendSlackBtn = document.getElementById('resend-to-slack-btn');
+            const resendSlackStatus = document.getElementById('resend-slack-status');
+            const copyCodeBtn = document.getElementById('copy-code-btn'); 
+            const copyStatus = document.getElementById('copy-status'); 
+
+
+            if (generateBtn && finalCodeTextarea && additionalInstructionsTextarea && resendSlackBtn && resendSlackStatus && copyCodeBtn && copyStatus) { 
+                
+                const observer = new MutationObserver(function() {
+                    if (finalCodeTextarea.value.trim() !== '') {
+                        resendSlackBtn.style.display = 'inline-block';
+                        copyCodeBtn.style.display = 'inline-block'; 
+                    } else {
+                        resendSlackBtn.style.display = 'none';
+                        copyCodeBtn.style.display = 'none'; 
+                    }
+                });
+                observer.observe(finalCodeTextarea, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+                 if (finalCodeTextarea.value.trim() !== '') { 
+                    resendSlackBtn.style.display = 'inline-block';
+                    copyCodeBtn.style.display = 'inline-block';
+                }
+
+
+                generateBtn.addEventListener('click', function () {
+                    if (!streamContainer || !streamLog) {
+                        console.error('Required DOM elements for streaming log are missing.');
+                        alert('Error: UI elements for streaming log are not ready.');
+                        return;
+                    }
+
+                    streamContainer.style.display = 'block';
+                    streamLog.textContent = 'Starting generation with Gemini model {{ gemini_model_name }}... Please wait.\n(Check Flask console for detailed API call progress too)\n\n';
+                    finalCodeTextarea.value = ''; 
+                    resendSlackBtn.style.display = 'none'; 
+                    copyCodeBtn.style.display = 'none';
+                    resendSlackStatus.textContent = ''; 
+                    copyStatus.textContent = '';
+                    let accumulatedCode = ''; 
+
+                    generateBtn.disabled = true;
+                    generateBtn.textContent = 'Generating...';
+
+                    const messagesDivs = document.querySelectorAll('.messages');
+                    messagesDivs.forEach(div => div.style.display = 'none');
+
+                    const additionalInstructions = encodeURIComponent(additionalInstructionsTextarea.value);
+                    const eventSourceUrl = "{{ url_for('stream_compose_generation') }}?additional_instructions=" + additionalInstructions;
+                    const eventSource = new EventSource(eventSourceUrl);
+
+
+                    eventSource.onmessage = function (event) {
+                        console.log("Raw event.data:", event.data); // For debugging newline issue
+                        
+                        if (event.data === "[STREAM_END]") {
+                            streamLog.textContent += '\n\n--- Generation Complete ---';
+                            eventSource.close();
+                            finalCodeTextarea.value = accumulatedCode; 
+                            if (accumulatedCode.trim() !== '') { 
+                                resendSlackBtn.style.display = 'inline-block';
+                                copyCodeBtn.style.display = 'inline-block';
+                            }
+                            generateBtn.disabled = false; 
+                            generateBtn.textContent = 'Generate Jetpack Compose with Gemini';
+
+                            fetch("{{ url_for('save_generated_code_and_notify_slack') }}", { 
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', },
+                                body: JSON.stringify({ code: accumulatedCode })
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                console.log('Save and Notify Slack response:', data);
+                                if (data.flash_messages) { 
+                                    data.flash_messages.forEach(msg => {
+                                        const messagesContainer = document.querySelector('.mdl-card__supporting-text'); 
+                                        const messageDiv = document.createElement('div');
+                                        messageDiv.className = 'messages ' + msg.category;
+                                        messageDiv.textContent = msg.message;
+                                        const figmaForm = messagesContainer.querySelector('form');
+                                        if (figmaForm && figmaForm.nextSibling) {
+                                            figmaForm.parentNode.insertBefore(messageDiv, figmaForm.nextSibling);
+                                        } else if (figmaForm) {
+                                            figmaForm.parentNode.appendChild(messageDiv);
+                                        }
+                                    });
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error saving code/notifying Slack:', error);
+                                alert('Error saving code and/or notifying Slack. Check console.');
+                            });
+
+                        } else if (event.data.startsWith("[ERROR]")) {
+                            let errorMessage = event.data.substring("[ERROR]".length).trim();
+                            streamLog.textContent += '\n\n--- ERROR --- \n' + errorMessage;
+                            eventSource.close();
+                            finalCodeTextarea.value = "Error during generation. See log above.";
+                            generateBtn.disabled = false;
+                            generateBtn.textContent = 'Generate Jetpack Compose with Gemini';
+                        } else if (event.data.startsWith("[INFO]")) {
+                            let infoMessage = event.data.substring("[INFO]".length).trim();
+                            streamLog.textContent += '\n[INFO] ' + infoMessage + '\n';
+                        }
+                        else {
+                            let textChunk = event.data.replace(/\\n/g, '\n'); 
+                            console.log("Processed textChunk:", textChunk); // For debugging newline issue
+                            streamLog.textContent += textChunk;
+                            accumulatedCode += textChunk; 
+                            streamContainer.scrollTop = streamContainer.scrollHeight; 
+                        }
+                    };
+
+                    eventSource.onerror = function (error) {
+                        console.error("EventSource failed:", error);
+                        streamLog.textContent += '\n\n--- Connection Error with Server. Streaming stopped. ---';
+                        eventSource.close();
+                        finalCodeTextarea.value = "Error connecting to the server for streaming. Check console.";
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = 'Generate Jetpack Compose with Gemini';
+                    };
+                });
+
+                resendSlackBtn.addEventListener('click', function() {
+                    const codeToSend = finalCodeTextarea.value;
+                    if (!codeToSend.trim()) {
+                        alert("No code to send to Slack.");
+                        return;
+                    }
+                    resendSlackStatus.textContent = 'Resending to Slack...';
+                    copyStatus.textContent = ''; 
+                    resendSlackBtn.disabled = true;
+
+                    fetch("{{ url_for('resend_to_slack') }}", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', },
+                        body: JSON.stringify({ code: codeToSend })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        resendSlackStatus.textContent = data.message;
+                        resendSlackStatus.className = data.status === 'success' ? 'messages success' : 'messages error';
+                        console.log('Resend to Slack response:', data);
+                    })
+                    .catch(error => {
+                        resendSlackStatus.textContent = 'Error resending to Slack: ' + error;
+                        resendSlackStatus.className = 'messages error';
+                        console.error('Error resending to Slack:', error);
+                    })
+                    .finally(() => {
+                         resendSlackBtn.disabled = false;
+                    });
+                });
+
+                copyCodeBtn.addEventListener('click', function() {
+                    const codeToCopy = finalCodeTextarea.value;
+                    if (!codeToCopy.trim()) {
+                        copyStatus.textContent = 'No code to copy.';
+                        copyStatus.style.color = '#c62828'; // Error color
+                        setTimeout(() => { copyStatus.textContent = ''; }, 2000);
+                        return;
+                    }
+                    // Use a temporary textarea for execCommand as a fallback for navigator.clipboard
+                    const tempTextArea = document.createElement('textarea');
+                    tempTextArea.value = codeToCopy;
+                    document.body.appendChild(tempTextArea);
+                    tempTextArea.select();
+                    try {
+                        const successful = document.execCommand('copy');
+                        if (successful) {
+                            copyStatus.textContent = 'Code copied to clipboard!';
+                            copyStatus.style.color = '#4CAF50'; // Success color
+                            copyCodeBtn.textContent = 'Copied!';
+                        } else {
+                            copyStatus.textContent = 'Failed to copy code (execCommand).';
+                            copyStatus.style.color = '#c62828';
+                            console.error('Fallback: Oops, unable to copy (execCommand failed)');
+                        }
+                    } catch (err) {
+                        copyStatus.textContent = 'Failed to copy code: ' + err;
+                        copyStatus.style.color = '#c62828';
+                        console.error('Fallback: Oops, unable to copy', err);
+                    }
+                    document.body.removeChild(tempTextArea);
+                    setTimeout(() => {
+                        copyStatus.textContent = '';
+                        copyCodeBtn.textContent = 'Copy Code';
+                    }, 2000); // Reset after 2 seconds
+                });
+            }
+        });
+    </script>
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+</body>
+</html>

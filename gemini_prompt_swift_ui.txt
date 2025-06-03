@@ -1,0 +1,59 @@
+{figma_json_data}
+
+This JSON data contains the structured information about the Figma node, including its properties, hierarchy, and styling attributes. It is the primary source for understanding the node's characteristics.
+
+{figma_svg_data_section}
+If SVG data is provided, it represents the vector graphics of the node. This is crucial for accurately rendering icons, complex shapes, and graphical elements.
+
+{additional_user_instructions_section}
+Any additional instructions provided in this section are specific overrides or clarifications for the current generation task and must be followed with precision.
+
+---
+
+**Key Instructions for SwiftUI Code Generation:**
+
+**PRIORITIZE PREVIOUSLY PROVIDED CUSTOM CODE:**  
+You have already been given Swift files that define the project’s design system (e.g., `AppColors`, `AppFonts`, custom modifiers, utilities). You must prioritize and directly reference these. For instance, if a Figma color is `#FF0000` and the custom code includes `AppColors.error`, you **must** use `AppColors.error`. **Do not** redefine this color inline using `Color(red: ..., green: ..., blue: ...)`. This ensures theming consistency and ease of maintenance.
+
+**Pixel-Perfect Accuracy:**  
+Precisely translate Figma layout and styling data into SwiftUI views. This includes accurately mapping:
+- Sizes (`frame`, `padding`, etc.)
+- Typography (`font`, `weight`, `size`, `lineSpacing`)
+- Layouts (`VStack`, `HStack`, `ZStack`, `Spacer`, `alignment`, `spacing`)
+- Shapes (`cornerRadius`, `shadow`, `overlay`, `stroke`)
+- Backgrounds, gradients, and opacity
+The result should visually match the Figma design when rendered.
+
+**Runnable, Error-Free SwiftUI Code:**  
+Ensure the output code compiles without errors in Xcode, and all necessary types, modifiers, and dependencies are included. Use only public or provided custom types for fonts, colors, and views. Avoid placeholders that would cause runtime issues.
+
+**Idiomatic SwiftUI Structure:**  
+Use standard SwiftUI components like `Text`, `Image`, `VStack`, `HStack`, `Spacer`, `Button`, `ZStack`, `RoundedRectangle`, and `Color`. Choose the most semantically appropriate container for each layout (e.g., use `Button` for interactivity, `Group` for logical grouping).
+
+**SVG Rendering:**  
+If SVG data is included, use best practices to render it. If the SVG is complex, suggest using a library like **SVGKit**, **SwiftSVG**, or converting it into a `UIImage` with a known decoder. If simple, it may be redrawn with SwiftUI `Path`. Include fallback logic or library references as necessary.
+
+**Interactive Components:**  
+For components that are interactive (e.g., buttons, toggles), provide a `Button(action:)` or appropriate SwiftUI interactivity wrapper. Use `@State` for form elements like `TextField`. Include `// TODO` comments for missing logic.
+
+**Previews:**  
+Include at least one `#Preview` for the generated view with mock or default values, demonstrating the layout accurately. If applicable, provide additional previews (e.g., for dark mode, different states).
+
+**Document Ambiguities Clearly:**  
+If a Figma property is ambiguous, lacks a direct SwiftUI equivalent, or is overly complex, simplify it appropriately and **include a comment** explaining your choice (e.g.,  
+```swift
+// Figma 'blurEffect': approximated using a shadow with reduced opacity
+
+Fallback for Unmapped Colors & Fonts:
+If a Figma color or font style is not present in the provided custom SwiftUI design system:
+	•	For colors: Use Color(red:..., green:..., blue:..., opacity:...) and comment that it’s a fallback.
+	•	For fonts: Construct a Font.custom with the provided attributes or use .system(size:weight:) as a fallback, with clear commenting.
+
+Auto-Layout Mapping:
+Translate Figma auto-layout (e.g., layoutMode, alignment, spacing, padding) into HStack, VStack, Spacer, alignment, padding and frame modifiers in SwiftUI. Use the SVG data for clarification where layout intent is unclear.
+
+Readable and Maintainable Code:
+Ensure the generated SwiftUI code is clean, well-structured, easy to read, and uses meaningful view and variable names. Follow Swift’s coding conventions and SwiftUI best practices.
+
+Only Output Code:
+Your response should include only the final, runnable SwiftUI code. Do not include explanations, headings, or non-code text. The output must start directly with import SwiftUI.
