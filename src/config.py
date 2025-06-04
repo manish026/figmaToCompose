@@ -18,7 +18,7 @@ GEMINI_MODEL_NAME = "gemini-2.5-pro-preview-05-06"
 
 # Directory for custom Kotlin code
 COMMON_CODE_DIR = "common"
-GEMINI_PROMPT_FILENAME = "gemini_prompt.txt"
+GEMINI_PROMPT_FILENAME = "src/gemini_prompt.txt"
 
 # Session keys for UI-inputted tokens (used by Flask session)
 FIGMA_TOKEN_SESSION_KEY = 'figma_token_ui_session' 

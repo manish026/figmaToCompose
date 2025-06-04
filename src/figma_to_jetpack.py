@@ -1,5 +1,5 @@
 import os
-import glob 
+import glob
 import time 
 import json # For reading figma json
 from flask import Flask, request, render_template, redirect, url_for, flash, session, Response, jsonify

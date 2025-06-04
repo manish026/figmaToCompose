@@ -1,7 +1,7 @@
 services:
   figma-to-compose:
-    image: manish026/figma-to-compose
-    container_name: figma-to-compose
+    image: manish026/figma-to-jetpack-compose
+    container_name: figma-to-jetpack-compose
     environment:
       FLASK_RUN_PORT: 5000
     ports:

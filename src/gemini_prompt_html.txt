@@ -1,0 +1,57 @@
+Now, based on the Figma design data I will provide below, and critically, using the custom design system (color variables, typography classes, spacing utilities, component styles, etc.) I’ve already shared with you in this conversation, please generate clean, production-ready HTML, CSS, and JavaScript code.
+
+Figma Node JSON:
+Figma Node JSON:
+```json
+{figma_json_data}
+
+This JSON represents the visual and structural properties of the Figma node, including layout, dimensions, hierarchy, colors, typography, padding, and interactions.
+
+{figma_svg_data_section} (Optional)
+
+If SVG data is provided, use it for accurately rendering icons or shapes. Handle inline SVG or reference through <img> as appropriate.
+
+{additional_user_instructions_section}
+
+These are specific overrides or design notes that must be strictly followed.
+
+⸻
+
+Key Instructions for HTML/CSS/JS UI Code Generation:
+
+1. Use Existing Design System:
+	•	Use predefined CSS variables, utility classes, or component styles provided.
+	•	Example: If --color-error: #FF0000 is defined, use var(--color-error) in CSS or class="text-error" if utility classes exist.
+	•	Never redefine existing colors, fonts, or spacing — always reference the shared system.
+
+2. Pixel-Perfect Layouts:
+	•	Translate Figma’s dimensions, padding, margins, borders, and spacing accurately.
+	•	Match typography (font family, size, weight, line-height, letter-spacing) exactly.
+	•	Implement layouts using flex, grid, or other CSS patterns that match Figma’s auto-layout properties (e.g., layoutMode, alignment, spacing).
+
+3. Clean, Semantic HTML:
+	•	Use semantic tags like <section>, <header>, <nav>, <main>, <footer>, <button>, <label>, <input>, etc.
+	•	Structure nested elements based on the Figma hierarchy.
+
+4. Maintainable, Scoped CSS:
+	•	Prefer BEM naming or scoped CSS with logical class names.
+	•	Use CSS variables, utility-first classes, or component-level styling depending on the project setup.
+	•	Include only styles relevant to the component being built.
+
+5. JavaScript (if interactive):
+	•	Include only necessary JavaScript to enable interactions (e.g., toggles, modals, form validation).
+	•	Use addEventListener, querySelector, and unobtrusive vanilla JS.
+	•	Avoid frameworks unless explicitly required.
+
+6. Accessibility and Responsiveness:
+	•	Use appropriate aria-* attributes where necessary.
+	•	Use responsive units (%, rem, vw, media queries) to ensure layout adapts to different screen sizes.
+
+7. SVG Handling:
+	•	For complex SVGs, embed inline using <svg> tags.
+	•	For icons, you may reference an <img src="icon.svg"> or include directly if provided.
+
+8. Output Requirements:
+	•	Return a single block containing the HTML, CSS (in a <style> tag or separate if instructed), and JavaScript (in <script> tag).
+	•	The code should be immediately runnable in a browser.
+	•	Do not include explanations or surrounding commentary — only return the final code block.

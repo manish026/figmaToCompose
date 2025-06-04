@@ -11,6 +11,7 @@ def load_gemini_prompt_template():
     try:
         # The content of the prompt file is the text selected by the user.
         # This function reads that content from the file specified in config.
+        print(f"Loading Gemini prompt template from: {config.GEMINI_PROMPT_FILENAME}")
         with open(config.GEMINI_PROMPT_FILENAME, 'r', encoding='utf-8') as f:
             return f.read()
     except FileNotFoundError:

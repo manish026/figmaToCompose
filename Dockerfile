@@ -8,6 +8,6 @@ COPY requirements.txt .
 
 RUN python3 -m pip install -r requirements.txt
 
-COPY figma_to_jetpack.py .
+COPY src src
 
-CMD [ "python3", "figma_to_jetpack.py" ]
+CMD [ "python3", "src/figma_to_jetpack.py" ]
